@@ -7,6 +7,24 @@ import { escapeHtml, escapeAttr } from '../app/ui-helpers.js';
 import { formatTime } from './email-list.js';
 
 /**
+ * 渲染邮件正文。
+ *
+ * 统一改用 sandbox iframe 承载原始 HTML，与首页（modules/app/email-viewer.js）保持一致：
+ * - `srcdoc` 经过 escapeAttr 转义，无法突破属性边界
+ * - `sandbox` **不含 allow-scripts**，邮件内的脚本一律不执行
+ * - 不做白名单裁剪，完整保留邮件原始排版（表格、样式、按钮都不会走样）
+ *
+ * @param {object} email - 邮件数据
+ * @returns {string} 正文 HTML 片段
+ */
+function renderEmailBody(email) {
+  if (email.html_content) {
+    return `<div class="email-content-area"><iframe srcdoc="${escapeAttr(email.html_content)}" sandbox="allow-popups" style="width:100%;min-height:400px;border:none;display:block"></iframe></div>`;
+  }
+  return `<pre style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(email.content || '')}</pre>`;
+}
+
+/**
  * 渲染邮件详情
  * @param {object} email - 邮件数据
  * @returns {string}
@@ -15,22 +33,15 @@ export function renderEmailDetail(email) {
   if (!email) {
     return '<div class="empty-detail">请选择一封邮件</div>';
   }
-  
+
   const sender = escapeHtml(email.sender || '未知发件人');
   const to = escapeHtml(email.to_addrs || '');
   const subject = escapeHtml(email.subject || '(无主题)');
   const receivedAt = formatTime(email.received_at);
   const verificationCode = email.verification_code || '';
-  
-  // 优先使用 HTML 内容
-  let content = '';
-  if (email.html_content) {
-    // 对 HTML 内容进行安全处理
-    content = sanitizeHtml(email.html_content);
-  } else {
-    content = `<pre style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(email.content || '')}</pre>`;
-  }
-  
+
+  const content = renderEmailBody(email);
+
   let metaHtml = `<div class="email-meta-inline">`;
   metaHtml += `<span>发件人：${sender}</span>`;
   if (to) metaHtml += `<span>收件人：${to}</span>`;
@@ -53,7 +64,12 @@ export function renderEmailDetail(email) {
 }
 
 /**
- * 使用白名单方式安全净化 HTML，替换移除固定危险标签的简单实现。
+ * 使用白名单方式净化 HTML（保留以兼容既有导入）。
+ *
+ * ⚠️ 邮件正文渲染已统一改为 sandbox iframe，不再依赖本函数。
+ * 若将来仍要使用，请注意它只能处理"标签/属性"层面的风险，
+ * 无法防御 CSS 覆盖类攻击（如 position:fixed 伪造界面）。
+ *
  * @param {string} html - 原始 HTML
  * @returns {string}
  */
@@ -94,12 +110,21 @@ export function sanitizeHtml(html) {
       const tag = node.tagName.toLowerCase();
 
       if (!ALLOWED_TAGS.has(tag)) {
-        // 移除不允许的标签，保留其文本内容
+        // 移除不允许的标签，保留其文本内容。
+        //
+        // ⚠️ 关键：子节点被搬到父节点之后就离开了本节点的遍历范围，
+        //    必须在这里主动递归净化，否则攻击者可以绕过白名单，例如
+        //    <center><img src=x onerror="..."></center> —— center 被拆掉后，
+        //    带 onerror 的 img 会原样留在结果里并执行脚本。
+        const moved = Array.from(node.childNodes);
         const fragment = document.createDocumentFragment();
-        while (node.firstChild) {
-          fragment.appendChild(node.firstChild);
+        for (const child of moved) {
+          fragment.appendChild(child);
         }
         node.parentNode.replaceChild(fragment, node);
+        for (const child of moved) {
+          sanitizeNode(child);
+        }
         return;
       }
 
@@ -153,20 +178,15 @@ export function sanitizeHtml(html) {
  */
 export function renderEmailModal(email) {
   if (!email) return '';
-  
+
   const subject = escapeHtml(email.subject || '(无主题)');
   const sender = escapeHtml(email.sender || '未知发件人');
   const to = escapeHtml(email.to_addrs || '');
   const receivedAt = formatTime(email.received_at);
   const verificationCode = email.verification_code || '';
-  
-  let content = '';
-  if (email.html_content) {
-    content = sanitizeHtml(email.html_content);
-  } else {
-    content = `<pre style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(email.content || '')}</pre>`;
-  }
-  
+
+  const content = renderEmailBody(email);
+
   return `
     <div class="modal-header">
       <h3 class="modal-title">${subject}</h3>
@@ -195,17 +215,17 @@ export function renderEmailModal(email) {
  */
 export function extractVerificationCode(text) {
   if (!text) return '';
-  
+
   const keywords = '(?:验证码|校验码|激活码|verification\\s+code|security\\s+code|otp|code)';
-  
+
   // 关键词后的 4-8 位数字
   let m = text.match(new RegExp(keywords + '[^0-9]{0,20}(\\d{4,8})', 'i'));
   if (m) return m[1];
-  
+
   // 全局 6 位数字
   m = text.match(/(?<!\d)(\d{6})(?!\d)/);
   if (m) return m[1];
-  
+
   return '';
 }
 

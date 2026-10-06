@@ -146,7 +146,7 @@ export function showSentEmailDetail(email, elements) {
 
   let bodyHtml = '';
   if (e.html_content) {
-    bodyHtml = `<div class="email-content-area"><iframe srcdoc="${escapeAttr(e.html_content)}" sandbox="allow-same-origin allow-popups" style="width:100%;min-height:400px;border:none;display:block"></iframe></div>`;
+    bodyHtml = `<div class="email-content-area"><iframe srcdoc="${escapeAttr(e.html_content)}" sandbox="allow-popups" style="width:100%;min-height:400px;border:none;display:block"></iframe></div>`;
   } else {
     bodyHtml = `<div class="email-content-area"><pre class="email-content-text" style="white-space:pre-wrap;word-break:break-word">${escapeHtml(e.text_content || '')}</pre></div>`;
   }
