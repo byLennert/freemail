@@ -1,15 +1,24 @@
 name: 🔄 Sync with Upstream
 
 on:
-  schedule:
-    # 每天 UTC 时间 00:00 运行一次自动同步（北京时间早上 8:00）
-    - cron: '0 0 * * *'
-  # 允许在 GitHub Actions 页面手动点击运行
+  # ⚠️ 已改为「仅手动触发」。
+  #
+  # 原本这里有一个每日定时任务（UTC 00:00 / 北京时间 08:00），会把上游
+  # idinging/freemail 自动合并进本仓库的 master。
+  # 但本仓库带有自己的补丁（例如 src/email/handler.js 的 RFC 2047 主题解码、
+  # 以及 deploy-cloudflare.yml 的触发分支修正），一旦上游改动同一文件，
+  # 自动合并就会冲突、任务失败。
+  #
+  # 所以改为手动：需要跟进上游时，到 Actions 页面点 Run workflow。
+  # 想恢复自动同步，把下面两行取消注释即可。
+  #
+  # schedule:
+  #   - cron: '0 0 * * *'
   workflow_dispatch:
 
 jobs:
   sync_with_upstream:
-    name: 🔄 Sync main with upstream latest
+    name: 🔄 Sync master with upstream latest
     runs-on: ubuntu-latest
 
     steps:
@@ -27,7 +36,7 @@ jobs:
           target_sync_branch: master
           # 自动注入的 GitHub Token（需要赋予 Actions 读写权限）
           target_repo_token: ${{ secrets.GITHUB_TOKEN }}
-          
+
           # 设为 false 表示真正执行同步（如果设为 true 则只测试不推送）
           test_mode: false
 
