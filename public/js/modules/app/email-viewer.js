@@ -5,6 +5,7 @@
 
 import { escapeHtml, escapeAttr, extractCode } from './ui-helpers.js';
 import { getEmailFromCache, setEmailCache } from './email-list.js';
+import { renderEmailFrame, extractLinks, renderLinksSection } from '../email-render.js';
 
 /**
  * 显示邮件详情
@@ -47,12 +48,14 @@ export async function showEmailDetail(id, elements, api, showToast) {
 
     let bodyHtml = '';
     if (email.html_content) {
-      bodyHtml = `<div class="email-content-area"><iframe srcdoc="${escapeAttr(email.html_content)}" sandbox="allow-popups" style="width:100%;min-height:400px;border:none;display:block"></iframe></div>`;
+      bodyHtml = renderEmailFrame(email.html_content);
     } else {
       bodyHtml = `<div class="email-content-area"><pre class="email-content-text" style="white-space:pre-wrap;word-break:break-word">${escapeHtml(email.content || '')}</pre></div>`;
     }
 
-    modalContent.innerHTML = `<div class="email-detail-container">${metaHtml}${codeHtml}${bodyHtml}</div>`;
+    const linksHtml = renderLinksSection(extractLinks(email.html_content || '', email.content || ''));
+
+    modalContent.innerHTML = `<div class="email-detail-container">${metaHtml}${codeHtml}${linksHtml}${bodyHtml}</div>`;
     modal.classList.add('show');
   } catch(e) {
     showToast(e.message || '加载失败', 'error');

@@ -5,21 +5,20 @@
 
 import { escapeHtml, escapeAttr } from '../app/ui-helpers.js';
 import { formatTime } from './email-list.js';
+import { renderEmailFrame, extractLinks, renderLinksSection } from '../email-render.js';
 
 /**
  * 渲染邮件正文。
  *
- * 统一改用 sandbox iframe 承载原始 HTML，与首页（modules/app/email-viewer.js）保持一致：
- * - `srcdoc` 经过 escapeAttr 转义，无法突破属性边界
- * - `sandbox` **不含 allow-scripts**，邮件内的脚本一律不执行
- * - 不做白名单裁剪，完整保留邮件原始排版（表格、样式、按钮都不会走样）
+ * 统一使用 sandbox iframe 承载原始 HTML，与首页（modules/app/email-viewer.js）保持一致。
+ * 具体策略见 modules/email-render.js 的 renderEmailFrame()。
  *
  * @param {object} email - 邮件数据
  * @returns {string} 正文 HTML 片段
  */
 function renderEmailBody(email) {
   if (email.html_content) {
-    return `<div class="email-content-area"><iframe srcdoc="${escapeAttr(email.html_content)}" sandbox="allow-popups" style="width:100%;min-height:400px;border:none;display:block"></iframe></div>`;
+    return renderEmailFrame(email.html_content);
   }
   return `<pre style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(email.content || '')}</pre>`;
 }
@@ -41,6 +40,7 @@ export function renderEmailDetail(email) {
   const verificationCode = email.verification_code || '';
 
   const content = renderEmailBody(email);
+  const linksHtml = renderLinksSection(extractLinks(email.html_content || '', email.content || ''));
 
   let metaHtml = `<div class="email-meta-inline">`;
   metaHtml += `<span>发件人：${sender}</span>`;
@@ -58,6 +58,7 @@ export function renderEmailDetail(email) {
       <h2 style="font-size:18px;font-weight:700;color:var(--text);word-break:break-all;padding:0 4px">${subject}</h2>
       ${metaHtml}
       ${codeHtml}
+      ${linksHtml}
       ${content}
     </div>
   `;
@@ -186,6 +187,7 @@ export function renderEmailModal(email) {
   const verificationCode = email.verification_code || '';
 
   const content = renderEmailBody(email);
+  const linksHtml = renderLinksSection(extractLinks(email.html_content || '', email.content || ''));
 
   return `
     <div class="modal-header">
@@ -198,6 +200,7 @@ export function renderEmailModal(email) {
       <span>${receivedAt}</span>
       ${verificationCode ? `<span class="code-highlight" data-code="${escapeAttr(verificationCode)}" title="点击复制" style="cursor:pointer">验证码：${escapeHtml(verificationCode)}</span>` : ''}
     </div>
+    ${linksHtml}
     <div class="modal-body">
       ${content}
     </div>

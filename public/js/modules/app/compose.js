@@ -3,8 +3,9 @@
  * @module modules/app/compose
  */
 
-import { escapeHtml, escapeAttr } from './ui-helpers.js';
+import { escapeHtml } from './ui-helpers.js';
 import { getCurrentMailbox } from './mailbox-state.js';
+import { renderEmailFrame } from '../email-render.js';
 
 /**
  * 初始化撰写模态框
@@ -146,7 +147,7 @@ export function showSentEmailDetail(email, elements) {
 
   let bodyHtml = '';
   if (e.html_content) {
-    bodyHtml = `<div class="email-content-area"><iframe srcdoc="${escapeAttr(e.html_content)}" sandbox="allow-popups" style="width:100%;min-height:400px;border:none;display:block"></iframe></div>`;
+    bodyHtml = renderEmailFrame(e.html_content);
   } else {
     bodyHtml = `<div class="email-content-area"><pre class="email-content-text" style="white-space:pre-wrap;word-break:break-word">${escapeHtml(e.text_content || '')}</pre></div>`;
   }
