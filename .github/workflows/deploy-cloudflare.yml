@@ -2,11 +2,14 @@ name: 🚀 Deploy freemail to Cloudflare Workers
 
 on:
   push:
-    branches: [ main ]
+    branches: [ master ]
     paths:
       - "src/**"
       - "public/**"
       - "wrangler.toml"
+      - "d1-init.sql"
+      - "package.json"
+      - "package-lock.json"
   workflow_dispatch:
 
 jobs:
