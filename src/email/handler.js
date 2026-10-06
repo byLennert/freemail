@@ -10,6 +10,43 @@ import { parseEmailBody, extractVerificationCode } from './parser.js';
 import { getForwardTarget } from '../db/mailboxes.js';
 import { invalidateSystemStatCache } from '../utils/cache.js';
 
+/**
+ * 解码邮件头中的 RFC 2047 编码字。
+ *
+ * 主题含中文等非 ASCII 字符时，原始邮件头是 `=?UTF-8?B?...?=` 这种编码形态，
+ * 直接入库会在前端显示成乱码。这里把它还原成可读文本。
+ *
+ * 支持 B（Base64）与 Q（Quoted-Printable）两种编码方式。
+ * 相邻的编码字之间允许存在折行空白，先合并再解码，避免多字节字符被切断。
+ *
+ * @param {string} value - 原始邮件头值
+ * @returns {string} 解码后的文本；解码失败时原样返回
+ */
+function decodeMimeWords(value) {
+  const raw = String(value || '');
+  if (!raw.includes('=?')) return raw;
+
+  const joined = raw.replace(/\?=\s+=\?/g, '?==?');
+
+  return joined.replace(/=\?([^?]+)\?([BbQq])\?([^?]*)\?=/g, (whole, charset, encoding, text) => {
+    try {
+      let bytes;
+      if (encoding.toUpperCase() === 'B') {
+        const bin = atob(text);
+        bytes = Uint8Array.from(bin, (ch) => ch.charCodeAt(0));
+      } else {
+        const qp = text
+          .replace(/_/g, ' ')
+          .replace(/=([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+        bytes = Uint8Array.from(qp, (ch) => ch.charCodeAt(0));
+      }
+      return new TextDecoder(charset || 'utf-8').decode(bytes);
+    } catch (_) {
+      return whole;
+    }
+  });
+}
+
 export async function handleEmailEvent(message, env, ctx) {
   let DB;
   try {
@@ -23,7 +60,7 @@ export async function handleEmailEvent(message, env, ctx) {
     const headers = message.headers;
     const toHeader = headers.get('to') || headers.get('To') || '';
     const fromHeader = headers.get('from') || headers.get('From') || '';
-    const subject = headers.get('subject') || headers.get('Subject') || '(无主题)';
+    const subject = decodeMimeWords(headers.get('subject') || headers.get('Subject') || '(无主题)');
 
     let envelopeTo = '';
     try {
@@ -85,9 +122,19 @@ export async function handleEmailEvent(message, env, ctx) {
       }
     } catch (e) { console.error('R2 put failed:', e); }
 
+    // 纯 HTML 邮件（无 text 部分）走兜底时，先把 <style>/<script> 整块去掉，
+    // 否则内嵌 CSS/JS 会被当成正文预览。
+    const htmlAsText = (htmlContent || '')
+      .replace(/<(style|script)[^>]*>[\s\S]*?<\/\1>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
     const preview = String(
-      (textContent?.trim() ? textContent : (htmlContent || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()) || ''
-    ).slice(0, 120);
+      (textContent?.trim() ? textContent : htmlAsText) || ''
+    ).replace(/\s+/g, ' ').trim().slice(0, 120);
+
     let verificationCode = '';
     try { verificationCode = extractVerificationCode({ subject, text: textContent, html: htmlContent }); } catch (_) { }
 
